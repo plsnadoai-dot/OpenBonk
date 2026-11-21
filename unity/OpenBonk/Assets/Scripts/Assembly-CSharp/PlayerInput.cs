@@ -39,6 +39,7 @@ public class PlayerInput : MonoBehaviour
 	private const float AutoCameraManualDelay = 0.5f;
 	private const float AutoCameraYawSpeed = 120f; // degrees/second, speed 3/5
 	private float lastManualCameraTime = -100f;
+	private GUIStyle autoCameraButtonStyle;
 
 	private bool hasWallrunActionBound;
 
@@ -159,6 +160,29 @@ public class PlayerInput : MonoBehaviour
 		else PlayerCamera.Instance.MovePositionOnly();
 #endif
 	}
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+	// Temporary test control. A native settings-menu switch can replace this later.
+	private void OnGUI()
+	{
+		if (!CanInput() || MyTime.paused || IsConsoleOpen()) return;
+		if (autoCameraButtonStyle == null)
+		{
+			autoCameraButtonStyle = new GUIStyle(GUI.skin.button);
+			autoCameraButtonStyle.fontSize = Mathf.RoundToInt(Mathf.Clamp(Screen.height * 0.025f, 14f, 26f));
+		}
+		bool enabled = PlayerPrefs.GetInt(AutoCameraPrefKey, 0) == 1;
+		float width = Mathf.Clamp(Screen.width * 0.17f, 110f, 190f);
+		float height = Mathf.Clamp(Screen.height * 0.065f, 38f, 58f);
+		if (GUI.Button(new Rect((Screen.width - width) * 0.5f, 8f, width, height),
+			"AUTO CAM: " + (enabled ? "ON" : "OFF"), autoCameraButtonStyle))
+		{
+			PlayerPrefs.SetInt(AutoCameraPrefKey, enabled ? 0 : 1);
+			PlayerPrefs.Save();
+			lastManualCameraTime = Time.unscaledTime;
+		}
+	}
+#endif
 
 	private void AutoRotation()
 	{
