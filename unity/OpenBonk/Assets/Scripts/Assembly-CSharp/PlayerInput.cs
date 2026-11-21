@@ -34,6 +34,12 @@ public class PlayerInput : MonoBehaviour
 
 	private float cameraSmoothingMax = 0.75f;
 
+	// Experimental opt-in. OFF unless explicitly enabled by a future settings UI.
+	private const string AutoCameraPrefKey = "openbonk_auto_camera_enabled";
+	private const float AutoCameraManualDelay = 0.5f;
+	private const float AutoCameraYawSpeed = 120f; // degrees/second, speed 3/5
+	private float lastManualCameraTime = -100f;
+
 	private bool hasWallrunActionBound;
 
 	private string stringMouseX = "Mouse X";
@@ -141,11 +147,13 @@ public class PlayerInput : MonoBehaviour
 	{
 #if UNITY_ANDROID && !UNITY_EDITOR
 		ManualRotation();
+		AutoRotation();
 		PlayerCamera.Instance.CameraInput(cameraRotation);
 #else
 		if (Cursor.lockState != CursorLockMode.None)
 		{
 			ManualRotation();
+			AutoRotation();
 			PlayerCamera.Instance.CameraInput(cameraRotation);
 		}
 		else PlayerCamera.Instance.MovePositionOnly();
@@ -154,6 +162,29 @@ public class PlayerInput : MonoBehaviour
 
 	private void AutoRotation()
 	{
+		if (PlayerPrefs.GetInt(AutoCameraPrefKey, 0) != 1) return;
+		if (Time.unscaledTime - lastManualCameraTime < AutoCameraManualDelay) return;
+		if (MovementInputMagnitude < 0.2f || MyPlayer.Instance == null ||
+			MyPlayer.Instance.playerMovement == null || IsMovementDisabled()) return;
+
+		// Use actual horizontal velocity, not the camera-relative input axes.
+		// Ignore low speeds so collisions and small physics impulses do not jerk the view.
+		Vector3 velocity = MyPlayer.Instance.playerMovement.GetVelocity();
+		velocity.y = 0f;
+		if (velocity.sqrMagnitude < 1f) return;
+		float targetYaw = Mathf.Atan2(velocity.x, velocity.z) * Mathf.Rad2Deg;
+		float yaw = Mathf.MoveTowardsAngle(desiredCameraRotation.y, targetYaw,
+			AutoCameraYawSpeed * Time.deltaTime);
+		desiredCameraRotation.y = yaw;
+		// Preserve the existing camera smoothing, and never modify pitch.
+		float smoothing = GetCameraSmoothing();
+		if (smoothing > 0f)
+		{
+			float factor = cameraSmoothingMin + (cameraSmoothingMax - cameraSmoothingMin) * (1f - smoothing);
+			cameraRotation.y = Mathf.LerpAngle(cameraRotation.y, yaw,
+				Mathf.Clamp01(Time.deltaTime * factor * 20f));
+		}
+		else cameraRotation.y = yaw;
 	}
 
 	private void ManualRotation()
@@ -180,6 +211,9 @@ public class PlayerInput : MonoBehaviour
 			keyX = Input.GetKey(KeyCode.LeftArrow) ? -3f : Input.GetKey(KeyCode.RightArrow) ? 3f : 0f;
 			keyY = Input.GetKey(KeyCode.UpArrow) ? 3f : Input.GetKey(KeyCode.DownArrow) ? -3f : 0f;
 		}
+		if (Mathf.Abs(mouseX) + Mathf.Abs(mouseY) + Mathf.Abs(lookX) +
+			Mathf.Abs(lookY) + Mathf.Abs(keyX) + Mathf.Abs(keyY) > 0.001f)
+			lastManualCameraTime = Time.unscaledTime;
 		ApplyRotationDelta(mouseX, mouseY, lookX, lookY, keyX, keyY, Time.deltaTime);
 	}
 
